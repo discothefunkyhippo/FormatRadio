@@ -6,8 +6,7 @@ import urllib2
 import zipfile
 import fnmatch
 from urllib2 import urlopen, URLError, HTTPError
-
-
+import argparse
 
 EXT_RAW = '.RAW'
 EXT_OTHER = ['.WAV','.AIF','.MP3','.MP4','.OGG','.M4A']
@@ -216,10 +215,50 @@ def setExtension(filename, extension):
 
 def main():
 
+    # parse arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-p', '--profile',
+                        help='The number corresponding to the desired settings profile',
+                        action='store',
+                        type=int)
+    parser.add_argument('-l',
+                        '--local',
+                        help='Use local audio files, specify the desired name of output dir',
+                        action='store',
+                        metavar='DIRECTORY NAME')
+    parser.add_argument('-o',
+                        '--online',
+                        help='Use online audio files, use in conjunction with -s to specify desired set',
+                        action='store_true')
+    parser.add_argument('-s',
+                        '--set',
+                        help="The number of the desired online set",
+                        action='store',
+                        type=int)
+    parser.add_argument('-i',
+                        '--input',
+                        action='store',
+                        metavar='DIRECTORY PATH')
+    parser.add_argument('-d',
+                        '--destination',
+                        help='The desired local path to store converted files',
+                        action='store',
+                        metavar='DIRECTORY PATH')
+    parser.add_argument('-m',
+                        '--merge',
+                        help='Specifying -m will automatically merge data if output directory\
+                        already exists',
+                        action='store_true')
+    args = parser.parse_args()
+
+    args.input = os.path.expanduser(args.input)
+    args.destination = os.path.expanduser(args.destination)
+
     config = loadConfig('config.json')
     profiles = config['profiles']
 
-    settings = getProfile(profiles, int(sys.argv[1]) if len(sys.argv) > 1 else None)
+    settings = getProfile(profiles, 
+                          int(args.profile) if args.profile != None else None)
 
     rootFolder = config['rootFolder']
     maxFilesPerVolume = config['maxFilesPerVolume']
@@ -230,12 +269,18 @@ def main():
 
     # select if local or online content
     localOnlineOptions = ["Local", "Online"]
-    localOnline = getLocalOnline(localOnlineOptions, int(sys.argv[3]) if len(sys.argv) > 3 else None)
+    if args.local != None and args.online == False:
+        localOnline = getLocalOnline(localOnlineOptions, 0)
+    elif args.online != False and args.local == None:
+        localOnline = getLocalOnline(localOnlineOptions, 1)
+    else:
+        localOnline = getLocalOnline(localOnlineOptions, None)
 
     if localOnline == "Local":
-        localDir = getLocalDir(int(sys.argv[4]) if len(sys.argv) > 4 else None)
-        sourceFolder = config['localSource']
-        targetFolder = os.path.join(rootFolder, localDir)
+        localDir = getLocalDir(args.local)
+        sourceFolder = args.input if args.input != None else config['localSource']
+        targetFolder = args.destination + localDir if args.destination != None\
+                       else os.path.join(rootFolder, localDir)
         key = localDir
 
         if not os.path.isdir(targetFolder):
@@ -243,7 +288,7 @@ def main():
             os.system("mkdir -p %s" % targetFolder)
         else:
             printStep('Skipping creating target dir, "%s" already exists' % targetFolder)
-            dupLocalDir = getDupLocalDir()
+            dupLocalDir = 'Y' if args.merge == True else getDupLocalDir()
             if dupLocalDir in ["Y", "y", "yes", "Yes"]:
                 printStep('Proceeding with existing folder, watch out for merged data!')
             else:
@@ -254,7 +299,7 @@ def main():
         # load set data
         sets = json.loads(open('data.json').read())['sets']
         # select a set
-        s = getSet(sets, int(sys.argv[2]) if len(sys.argv) > 2 else None)
+        s = getSet(sets, args.set)
 
         url = s['url']
         name = s['name']
